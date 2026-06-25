@@ -7,31 +7,33 @@
 ## 구조
 
 - `index.html` — 프론트엔드 (정적). `/api/quote` 를 fetch, 10초 자동 갱신
-- `api/quote.py` — Vercel Python 서버리스 함수. yfinance 조회 → JSON
-- `requirements.txt` — yfinance, tzdata
-- `app.py` — (선택) 로컬 테스트용 Flask 서버. 배포에는 불필요
+- `server.py` — **상시 실행 서버 (Render/Railway용)**. 백그라운드 웹소켓이
+  Yahoo 실시간 스트림에 연결해 최신가를 캐시 → 오버나이트(Blue Ocean ATS,
+  8PM~4AM ET) 세션까지 Yahoo 웹페이지와 동일한 값 표시. OHLC/전일종가/최근
+  종가는 REST로 가져와 30초 캐시.
+- `Procfile`, `render.yaml` — 배포 설정 (gunicorn, **workers=1 필수**)
+- `requirements.txt` — flask, gunicorn, yfinance, tzdata, websockets, protobuf
+- `api/quote.py` — (구) Vercel 서버리스용. **오버나이트 미지원** (REST만). 참고용
+- `app.py` — (선택) 로컬 REST-only 테스트용
 
-## Vercel 배포 (GitHub 연동)
+> ⚠️ Vercel 서버리스는 상시 웹소켓 연결을 유지할 수 없어 오버나이트가 안 된다.
+> 실시간(오버나이트 포함)을 원하면 아래 Render 방식으로 배포한다.
 
-1. 이 폴더를 GitHub 저장소에 push
-   ```bash
-   git init
-   git add .
-   git commit -m "stock quote app"
-   git branch -M main
-   git remote add origin https://github.com/<사용자>/<저장소>.git
-   git push -u origin main
-   ```
-2. https://vercel.com 가입 → **Add New → Project** → 위 GitHub 저장소 Import
-3. 설정 그대로 **Deploy** (프레임워크 자동감지, 빌드 설정 불필요)
-4. 발급된 `https://<프로젝트>.vercel.app` 접속 → 종목명 입력
+## Render 배포 (GitHub 연동, 실시간/오버나이트 지원)
 
-> 이후 GitHub에 push할 때마다 Vercel이 자동 재배포한다.
-> 로컬·Vercel 어디에도 직접 Python을 "설치"할 필요 없음 — Vercel이 빌드 시 처리.
+1. GitHub에 push (이미 origin 연결됨: `git push origin main`)
+2. https://render.com 가입 → **New → Web Service** → GitHub 저장소 연결
+3. `render.yaml` 자동 감지 (또는 Start Command:
+   `gunicorn server:app --workers 1 --threads 8 --timeout 120`)
+4. **Create Web Service** → 발급된 `https://<이름>.onrender.com` 접속
 
-## 로컬 테스트 (선택, Python 필요)
+> 무료 플랜은 일정 시간 미사용 시 슬립 → 첫 접속이 느릴 수 있음.
+> 웹소켓 캐시 공유를 위해 **workers는 반드시 1개**로 둔다.
+
+## 로컬 실행 (Python 필요)
 
 ```bash
-pip install flask yfinance tzdata
-python app.py        # http://127.0.0.1:5000
+pip install -r requirements.txt
+python server.py     # http://127.0.0.1:5000  (웹소켓 실시간 포함)
+# 또는 REST-only:  python app.py
 ```

@@ -1,2 +1,6 @@
+flask
+gunicorn
 yfinance
 tzdata
+websockets
+protobuf

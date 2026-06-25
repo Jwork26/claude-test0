@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: stock-quote
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    # workers=1 필수: 웹소켓 실시간 캐시를 단일 프로세스가 공유해야 함
+    startCommand: gunicorn server:app --workers 1 --threads 8 --timeout 120

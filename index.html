@@ -131,7 +131,7 @@
 
       el.innerHTML = `
         <button class="remove" data-sym="${sym}" title="삭제">✕</button>
-        <div class="timestamp">🕐 ${d.fetchedKST} KST / ${d.fetchedET}</div>
+        <div class="timestamp">${d.source === "LIVE" ? "🟢 실시간 " : "🕐 "}${d.fetchedKST} KST / ${d.fetchedET}</div>
         <div class="head"><span class="ticker">${d.symbol}</span><span class="badge">${d.marketLabel}</span><span class="name">${d.name}</span></div>
         <div class="price ${cls}">$${fmt(d.price)}</div>
         ${chg}
