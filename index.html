@@ -82,8 +82,10 @@
 
 <script>
   const REFRESH_MS = 10000;
+  const RETRY_MS = 3000;   // 에러 시 재시도 간격
   const DEFAULTS = ["SNDK", "MU"];   // SanDisk, Micron
   let symbols = [...DEFAULTS];
+  const _retryTimers = {};
 
   const $ = (id) => document.getElementById(id);
   const cards = $("cards");
@@ -144,9 +146,20 @@
         ${recent ? `<div class="recent"><div class="rlbl">최근 4일 종가</div><div class="rgrid">${recent}</div></div>` : ""}`;
       rebind(el);
     } catch (e) {
-      el.innerHTML = `<div class="msg err">${sym}: 네트워크 오류</div>
-        <button class="remove" data-sym="${sym}">✕</button>`;
-      rebind(el);
+      // 서버 슬립 중이면 3초마다 재시도, 카드에 카운트다운 표시
+      let countdown = RETRY_MS / 1000;
+      const tick = () => {
+        const el2 = $(cardId(sym));
+        if (!el2) return;
+        el2.innerHTML = `<div class="msg err">${sym}: 서버 연결 중… (${countdown}초 후 재시도)</div>
+          <button class="remove" data-sym="${sym}">✕</button>`;
+        rebind(el2);
+      };
+      tick();
+      clearTimeout(_retryTimers[sym]);
+      _retryTimers[sym] = setTimeout(() => load(sym), RETRY_MS);
+      const iv = setInterval(() => { countdown--; tick(); }, 1000);
+      setTimeout(() => clearInterval(iv), RETRY_MS);
     }
   }
 
