@@ -52,7 +52,16 @@
     background: var(--cell); color: var(--muted); font-weight: 600;
   }
   .price { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.15; margin-top: 2px; }
-  .change { font-size: 13px; font-weight: 700; margin: 1px 0 8px; }
+  .change { font-size: 13px; font-weight: 700; }
+  .change-line { font-size: 13px; margin: 1px 0 8px; min-height: 18px; }
+
+  /* 장외: 종가 | 오버나이트 나란히 */
+  .price-row { display: flex; align-items: flex-start; gap: 0; margin-bottom: 8px; }
+  .price-block { flex: 1; }
+  .price-block .price { margin-top: 1px; }
+  .price-block .change-line { margin-bottom: 0; }
+  .plbl { font-size: 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; margin-top: 2px; }
+  .price-divider { width: 1px; background: var(--border); margin: 4px 12px 0; align-self: stretch; }
   .up { color: var(--up); }
   .down { color: var(--down); }
 
@@ -126,17 +135,45 @@
       const cls = up ? "up" : "down";
       const sign = up ? "▲" : "▼";
       const chg = (d.change === null) ? "" :
-        `<div class="change ${cls}">${sign} ${fmt(Math.abs(d.change))} (${up ? "+" : "-"}${fmt(Math.abs(d.changePct))}%)</div>`;
+        `<span class="change ${cls}">${sign} ${fmt(Math.abs(d.change))} (${up ? "+" : "-"}${fmt(Math.abs(d.changePct))}%)</span>`;
+
+      // 장외(애프터/오버나이트) 시 종가와 오버나이트 가격 분리 표시
+      let priceBlock = "";
+      if (d.isPostMarket && d.regularPrice != null) {
+        const rup = (d.regularChange ?? 0) >= 0;
+        const rcls = rup ? "up" : "down";
+        const rsign = rup ? "▲" : "▼";
+        const rchg = d.regularChange != null
+          ? `<span class="change ${rcls}">${rsign} ${fmt(Math.abs(d.regularChange))} (${rup?"+":"-"}${fmt(Math.abs(d.regularChangePct))}%)</span>`
+          : "";
+        priceBlock = `
+          <div class="price-row">
+            <div class="price-block">
+              <div class="plbl">종가</div>
+              <div class="price ${rcls}">$${fmt(d.regularPrice)}</div>
+              <div class="change-line">${rchg}</div>
+            </div>
+            <div class="price-divider"></div>
+            <div class="price-block">
+              <div class="plbl">${d.marketLabel} ${d.source === "LIVE" ? "🟢" : ""}</div>
+              <div class="price ${cls}">$${fmt(d.price)}</div>
+              <div class="change-line">${chg}</div>
+            </div>
+          </div>`;
+      } else {
+        priceBlock = `
+          <div class="price ${cls}">$${fmt(d.price)}</div>
+          <div class="change-line">${chg}</div>`;
+      }
 
       const recent = (d.recentCloses || []).map(r =>
         `<div class="rcell"><div class="rd">${r.date}</div><div class="rv">${fmt(r.close)}</div></div>`).join("");
 
       el.innerHTML = `
         <button class="remove" data-sym="${sym}" title="삭제">✕</button>
-        <div class="timestamp">${d.source === "LIVE" ? "🟢 실시간 " : "🕐 "}${d.fetchedKST} KST / ${d.fetchedET}</div>
-        <div class="head"><span class="ticker">${d.symbol}</span><span class="badge">${d.marketLabel}</span><span class="name">${d.name}</span></div>
-        <div class="price ${cls}">$${fmt(d.price)}</div>
-        ${chg}
+        <div class="timestamp">${d.source === "LIVE" && !d.isPostMarket ? "🟢 실시간 " : "🕐 "}${d.fetchedKST} KST / ${d.fetchedET}</div>
+        <div class="head"><span class="ticker">${d.symbol}</span><span class="badge">${d.isPostMarket ? d.marketLabel : d.marketLabel}</span><span class="name">${d.name}</span></div>
+        ${priceBlock}
         <div class="grid">
           <div class="cell"><div class="lbl">전일종가</div><div class="val">${fmt(d.previousClose)}</div></div>
           <div class="cell"><div class="lbl">시가</div><div class="val">${fmt(d.open)}</div></div>

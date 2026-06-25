@@ -36,7 +36,7 @@ _MH = {0: "프리마켓", 1: "장중", 2: "애프터마켓", 3: "오버나이트
 
 WS_URL = "wss://streamer.finance.yahoo.com/?version=2"
 
-VERSION = "133a9ef-diag2"
+VERSION = "8347b82-dual-price"
 
 
 # ── protobuf-lite 파서 ────────────────────────────────────────────────────────
@@ -264,17 +264,29 @@ def quote():
     else:
         price, label = rest_fallback(d)
 
-    prev = d["previousClose"]
+    prev       = d["previousClose"]
+    reg_price  = d["regularMarketPrice"]   # 당일 정규장 종가 (항상 포함)
     change     = round(price - prev, 4) if price and prev else None
     change_pct = round(change / prev * 100, 4) if change and prev else None
+
+    # 장외(POST/POSTPOST) 상태일 때 종가 대비 오버나이트 등락도 제공
+    st = d["marketState"]
+    is_postmarket = st in ("POST", "POSTPOST")
+    reg_change     = round(reg_price - prev, 4) if reg_price and prev else None
+    reg_change_pct = round(reg_change / prev * 100, 4) if reg_change and prev else None
 
     now = datetime.now(tz=KST)
     return jsonify({
         "symbol":        symbol,
         "name":          d["name"],
         "marketLabel":   label,
+        "marketState":   st,
+        "isPostMarket":  is_postmarket,
         "source":        source,
-        "price":         price,
+        "price":         price,        # 현재가 (장외면 오버나이트/애프터)
+        "regularPrice":  reg_price,    # 당일 정규장 종가
+        "regularChange": reg_change,
+        "regularChangePct": reg_change_pct,
         "previousClose": prev,
         "open":          d["open"],
         "dayHigh":       d["dayHigh"],
