@@ -202,6 +202,11 @@ def index():
     return send_from_directory(".", "index.html")
 
 
+@app.route("/api/version")
+def version():
+    return jsonify({"version": "7b85fee", "ws_backend": "websocket-client"})
+
+
 @app.route("/api/quote")
 def quote():
     symbol = (request.args.get("symbol") or "").strip().upper()
