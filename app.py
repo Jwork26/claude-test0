@@ -36,7 +36,7 @@ _MH = {0: "프리마켓", 1: "장중", 2: "애프터마켓", 3: "오버나이트
 
 WS_URL = "wss://streamer.finance.yahoo.com/?version=2"
 
-VERSION = "15e1090-diag"
+VERSION = "133a9ef-diag2"
 
 
 # ── protobuf-lite 파서 ────────────────────────────────────────────────────────
@@ -108,9 +108,6 @@ def _run_ws():
         try:
             raw = base64.b64decode(message)
             msg = _parse_pricing(raw)
-            # 디버그: 파싱 결과를 _debug에 저장
-            with _live_lock:
-                _live["__debug__"] = {"raw_len": len(raw), "parsed": str(msg)[:200], "ts": time.time()}
             sym   = msg.get("id")
             price = msg.get("price")
             mh    = msg.get("marketHours")
@@ -121,9 +118,12 @@ def _run_ws():
                         "label": _MH.get(mh, ""),
                         "ts":    time.time(),
                     }
+            # 메시지는 받았지만 유효 데이터 없음 (연결 확인용)
+            with _live_lock:
+                _live["__last_msg__"] = {"raw_len": len(raw), "parsed": str(msg)[:100], "ts": time.time()}
         except Exception as e:
             with _live_lock:
-                _live["__error__"] = {"err": str(e), "ts": time.time()}
+                _live["__msg_error__"] = {"err": str(e)[:200], "ts": time.time()}
 
     def on_error(ws, err):
         with _live_lock:
@@ -227,13 +227,17 @@ def version():
 @app.route("/api/ws-status")
 def ws_status():
     with _live_lock:
-        snap = {k: {"price": v["price"], "label": v["label"],
-                    "age_sec": round(time.time() - v["ts"])}
-                for k, v in _live.items()}
+        live_copy = dict(_live)
+    # __ 로 시작하는 키는 디버그/상태 정보, 나머지는 실시간 가격 캐시
+    price_cache = {k: {"price": v["price"], "label": v["label"],
+                       "age_sec": round(time.time() - v["ts"])}
+                   for k, v in live_copy.items() if not k.startswith("__")}
+    debug_info  = {k: v for k, v in live_copy.items() if k.startswith("__")}
     with _sub_lock:
         subs = list(_subscribed)
     return jsonify({"version": VERSION, "subscribed": subs,
-                    "live_cache": snap, "count": len(snap)})
+                    "price_cache": price_cache, "count": len(price_cache),
+                    "debug": debug_info})
 
 
 @app.route("/api/quote")
