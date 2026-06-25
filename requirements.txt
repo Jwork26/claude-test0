@@ -1,7 +1,5 @@
 flask
 gunicorn
 yfinance
-yflive
 tzdata
-websockets
-protobuf
+websocket-client
