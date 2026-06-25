@@ -36,7 +36,7 @@ _MH = {0: "프리마켓", 1: "장중", 2: "애프터마켓", 3: "오버나이트
 
 WS_URL = "wss://streamer.finance.yahoo.com/?version=2"
 
-VERSION = "ws-prefix-fix"
+VERSION = "ws-offset-fix"
 
 
 # ── protobuf-lite 파서 ────────────────────────────────────────────────────────
@@ -105,29 +105,46 @@ def _run_ws():
         ws.send(json.dumps({"subscribe": syms}))
 
     def on_message(ws, message):
+        raw_repr = repr(message[:12]) if isinstance(message, (str, bytes)) else "?"
         try:
             if isinstance(message, bytes):
+                # BINARY 프레임이면 raw protobuf 직접 파싱 시도
+                msg = _parse_pricing(message)
+                if msg.get("id") and msg.get("price"):
+                    sym, price, mh = msg["id"], msg["price"], msg.get("marketHours")
+                    with _live_lock:
+                        _live[sym] = {"price": round(float(price), 2),
+                                      "label": _MH.get(mh, ""), "ts": time.time()}
+                    with _live_lock:
+                        _live["__last_msg__"] = {"mode": "binary", "parsed": str(msg)[:120], "ts": time.time()}
+                    return
+                # binary이지만 protobuf 파싱 실패 → UTF-8 text로 시도
                 message = message.decode("utf-8", errors="ignore")
+
             msg_str = message.strip()
 
-            # Yahoo는 메시지 앞에 타입 prefix 문자(예: "0", "4")를 붙이는 경우가 있음
-            # 유효 base64 문자가 아니면 앞에서 제거
-            B64_CHARS = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=-_")
-            while msg_str and msg_str[0] not in B64_CHARS:
-                msg_str = msg_str[1:]
-
-            # 패딩 맞춤 후 urlsafe / 표준 base64 둘 다 시도
-            padded = msg_str + "=" * (-len(msg_str) % 4)
+            # base64 디코딩: offset 0~3을 순서대로 시도
+            # 핵심: length % 4 == 1인 offset은 수학적으로 불가능하므로 건너뜀
+            # (예: 69자 → 69%4=1 → 건너뜀, offset=1 → 68자 → 68%4=0 → 성공)
             raw = None
-            last_err = None
-            for decode_fn in (base64.b64decode, base64.urlsafe_b64decode):
-                try:
-                    raw = decode_fn(padded)
+            used_offset = -1
+            for offset in range(min(4, len(msg_str))):
+                candidate = msg_str[offset:]
+                if len(candidate) % 4 == 1:   # 수학적으로 invalid → skip
+                    continue
+                padded = candidate + "=" * (-len(candidate) % 4)
+                for decode_fn in (base64.b64decode, base64.urlsafe_b64decode):
+                    try:
+                        raw = decode_fn(padded)
+                        used_offset = offset
+                        break
+                    except Exception:
+                        pass
+                if raw is not None:
                     break
-                except Exception as e:
-                    last_err = e
+
             if raw is None:
-                raise last_err
+                raise ValueError(f"base64 decode failed for all offsets, raw={raw_repr}")
 
             msg = _parse_pricing(raw)
             sym   = msg.get("id")
@@ -142,14 +159,14 @@ def _run_ws():
                     }
             with _live_lock:
                 _live["__last_msg__"] = {
-                    "raw_len": len(raw), "parsed": str(msg)[:120],
-                    "raw_prefix": message[:4], "ts": time.time(),
+                    "mode": "text", "raw_len": len(raw),
+                    "offset": used_offset, "raw_prefix": raw_repr,
+                    "parsed": str(msg)[:120], "ts": time.time(),
                 }
         except Exception as e:
             with _live_lock:
                 _live["__msg_error__"] = {
-                    "err": str(e)[:200],
-                    "raw_prefix": (message[:8] if isinstance(message, str) else repr(message[:8])),
+                    "err": str(e)[:200], "raw_prefix": raw_repr,
                     "ts": time.time(),
                 }
 
