@@ -111,6 +111,9 @@ def _run_ws():
         try:
             raw = base64.b64decode(message)
             msg = _parse_pricing(raw)
+            # 디버그: 파싱 결과를 _debug에 저장
+            with _live_lock:
+                _live["__debug__"] = {"raw_len": len(raw), "parsed": str(msg)[:200], "ts": time.time()}
             sym   = msg.get("id")
             price = msg.get("price")
             mh    = msg.get("marketHours")
@@ -121,8 +124,9 @@ def _run_ws():
                         "label": _MH.get(mh, ""),
                         "ts":    time.time(),
                     }
-        except Exception:
-            pass
+        except Exception as e:
+            with _live_lock:
+                _live["__error__"] = {"err": str(e), "ts": time.time()}
 
     while True:
         try:
