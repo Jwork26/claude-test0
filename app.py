@@ -36,7 +36,7 @@ _MH = {0: "프리마켓", 1: "장중", 2: "애프터마켓", 3: "오버나이트
 
 WS_URL = "wss://streamer.finance.yahoo.com/?version=2"
 
-VERSION = "8347b82-dual-price"
+VERSION = "5fc5d3c-b64fix"
 
 
 # ── protobuf-lite 파서 ────────────────────────────────────────────────────────
@@ -106,7 +106,7 @@ def _run_ws():
 
     def on_message(ws, message):
         try:
-            raw = base64.b64decode(message)
+            raw = base64.b64decode(message + "==")  # Yahoo는 패딩 없는 base64 사용
             msg = _parse_pricing(raw)
             sym   = msg.get("id")
             price = msg.get("price")
