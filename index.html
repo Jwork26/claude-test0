@@ -6,99 +6,133 @@
 <title>미국 주식 시세</title>
 <style>
   :root {
-    --up: #e02020;      /* 상승=빨강 (한국식) */
-    --down: #1565d8;    /* 하락=파랑 */
-    --muted: #888;
-    --bg: #f5f6f8;
-    --card: #fff;
-    --border: #e3e5e9;
+    --up: #ff5252;      /* 상승=빨강 (한국식) */
+    --down: #4d9fff;    /* 하락=파랑 */
+    --muted: #8b909a;
+    --bg: #0e1116;      /* 다크 배경 */
+    --card: #1a1e26;
+    --border: #2a2f3a;
+    --cell: #20252f;
+    --text: #e8eaed;
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0; padding: 32px 16px;
+    margin: 0; padding: 20px 14px;
     background: var(--bg);
     font-family: -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
-    color: #1a1a1a;
+    color: var(--text);
     display: flex; flex-direction: column; align-items: center;
   }
-  .search { display: flex; gap: 8px; margin-bottom: 24px; width: 100%; max-width: 460px; }
+  .search { display: flex; gap: 8px; margin-bottom: 18px; width: 100%; max-width: 480px; }
   .search input {
-    flex: 1; padding: 12px 14px; font-size: 16px;
-    border: 1px solid var(--border); border-radius: 10px; outline: none;
+    flex: 1; padding: 10px 12px; font-size: 15px;
+    background: var(--card); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; outline: none;
     text-transform: uppercase;
   }
   .search input:focus { border-color: #4a90d9; }
   .search button {
-    padding: 12px 20px; font-size: 16px; font-weight: 600;
-    background: #1a1a1a; color: #fff; border: none; border-radius: 10px; cursor: pointer;
+    padding: 10px 18px; font-size: 15px; font-weight: 600;
+    background: #e8eaed; color: #14171c; border: none; border-radius: 8px; cursor: pointer;
   }
   .search button:active { transform: scale(0.97); }
+
+  .cards { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 480px; }
   .card {
-    background: var(--card); border: 1px solid var(--border); border-radius: 16px;
-    padding: 24px; width: 100%; max-width: 460px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    position: relative;
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px 14px;
   }
-  .timestamp { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
-  .head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
-  .ticker { font-size: 20px; font-weight: 700; }
-  .name { font-size: 13px; color: var(--muted); }
+  .timestamp { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .head { display: flex; align-items: baseline; gap: 8px; }
+  .ticker { font-size: 15px; font-weight: 700; }
+  .name { font-size: 11px; color: var(--muted); }
   .badge {
-    font-size: 12px; padding: 3px 9px; border-radius: 20px;
-    background: #eef1f5; color: #555; font-weight: 600;
+    font-size: 11px; padding: 2px 7px; border-radius: 12px;
+    background: var(--cell); color: var(--muted); font-weight: 600;
   }
-  .price { font-size: 40px; font-weight: 800; letter-spacing: -1px; }
-  .change { font-size: 17px; font-weight: 700; margin: 4px 0 20px; }
+  .price { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.15; margin-top: 2px; }
+  .change { font-size: 13px; font-weight: 700; margin: 1px 0 8px; }
   .up { color: var(--up); }
   .down { color: var(--down); }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); border-radius: 10px; overflow: hidden; }
-  .cell { background: var(--card); padding: 12px 14px; }
-  .cell .lbl { font-size: 12px; color: var(--muted); margin-bottom: 3px; }
-  .cell .val { font-size: 16px; font-weight: 600; }
-  .msg { color: var(--muted); text-align: center; padding: 20px; }
+
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border-radius: 8px; overflow: hidden; }
+  .cell { background: var(--cell); padding: 7px 8px; }
+  .cell .lbl { font-size: 10px; color: var(--muted); margin-bottom: 1px; }
+  .cell .val { font-size: 13px; font-weight: 600; }
+
+  .recent { margin-top: 8px; }
+  .recent .rlbl { font-size: 10px; color: var(--muted); margin-bottom: 3px; }
+  .rgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border-radius: 8px; overflow: hidden; }
+  .rcell { background: var(--cell); padding: 6px 8px; text-align: center; }
+  .rcell .rd { font-size: 10px; color: var(--muted); }
+  .rcell .rv { font-size: 12px; font-weight: 600; }
+
+  .remove { position: absolute; top: 10px; right: 12px; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; background: none; border: none; }
+  .msg { color: var(--muted); font-size: 13px; padding: 6px 0; }
   .err { color: var(--up); }
 </style>
 </head>
 <body>
   <div class="search">
-    <input id="symbol" placeholder="종목명 (예: SNDK, AAPL)" autofocus>
-    <button id="go">조회</button>
+    <input id="symbol" placeholder="종목 추가 (예: AAPL)">
+    <button id="go">추가</button>
   </div>
-  <div class="card" id="card">
-    <div class="msg">종목명을 입력하고 조회하세요.</div>
-  </div>
+  <div class="cards" id="cards"></div>
 
 <script>
   const REFRESH_MS = 10000;
-  let timer = null;
-  let current = "";
+  const DEFAULTS = ["SNDK", "MU"];   // SanDisk, Micron
+  let symbols = [...DEFAULTS];
 
   const $ = (id) => document.getElementById(id);
-  const card = $("card");
+  const cards = $("cards");
 
-  function fmt(n) {
-    if (n === null || n === undefined) return "-";
-    return Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmt = (n) => (n === null || n === undefined) ? "-"
+    : Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  function cardId(sym) { return "card-" + sym; }
+
+  function render() {
+    cards.innerHTML = symbols.map(s =>
+      `<div class="card" id="${cardId(s)}"><div class="msg">${s} 불러오는 중…</div>
+       <button class="remove" data-sym="${s}" title="삭제">✕</button></div>`
+    ).join("");
+    cards.querySelectorAll(".remove").forEach(b =>
+      b.addEventListener("click", () => removeSymbol(b.dataset.sym)));
+    symbols.forEach(load);
   }
 
-  async function load(symbol) {
-    try {
-      const res = await fetch(`/api/quote?symbol=${encodeURIComponent(symbol)}`);
-      const d = await res.json();
-      if (!res.ok) { card.innerHTML = `<div class="msg err">${d.error || "조회 실패"}</div>`; return; }
+  function removeSymbol(sym) {
+    symbols = symbols.filter(s => s !== sym);
+    render();
+  }
 
+  async function load(sym) {
+    const el = $(cardId(sym));
+    if (!el) return;
+    try {
+      const res = await fetch(`/api/quote?symbol=${encodeURIComponent(sym)}`);
+      const d = await res.json();
+      if (!res.ok) {
+        el.innerHTML = `<div class="msg err">${sym}: ${d.error || "조회 실패"}</div>
+          <button class="remove" data-sym="${sym}">✕</button>`;
+        rebind(el);
+        return;
+      }
       const up = (d.change ?? 0) >= 0;
       const cls = up ? "up" : "down";
-      const sign = up ? "▲ +" : "▼ ";
+      const sign = up ? "▲" : "▼";
       const chg = (d.change === null) ? "" :
-        `<div class="change ${cls}">${sign}${fmt(Math.abs(d.change))} (${sign.trim().slice(0,1) === "▲" ? "+" : "-"}${fmt(Math.abs(d.changePct))}%)</div>`;
+        `<div class="change ${cls}">${sign} ${fmt(Math.abs(d.change))} (${up ? "+" : "-"}${fmt(Math.abs(d.changePct))}%)</div>`;
 
-      card.innerHTML = `
-        <div class="timestamp">🕐 ${d.fetchedKST} KST / ${d.fetchedET} 기준</div>
-        <div class="head">
-          <span class="ticker">${d.symbol}</span>
-          <span class="badge">${d.marketLabel}</span>
-        </div>
-        <div class="name">${d.name}</div>
+      const recent = (d.recentCloses || []).map(r =>
+        `<div class="rcell"><div class="rd">${r.date}</div><div class="rv">${fmt(r.close)}</div></div>`).join("");
+
+      el.innerHTML = `
+        <button class="remove" data-sym="${sym}" title="삭제">✕</button>
+        <div class="timestamp">🕐 ${d.fetchedKST} KST / ${d.fetchedET}</div>
+        <div class="head"><span class="ticker">${d.symbol}</span><span class="badge">${d.marketLabel}</span><span class="name">${d.name}</span></div>
         <div class="price ${cls}">$${fmt(d.price)}</div>
         ${chg}
         <div class="grid">
@@ -106,23 +140,34 @@
           <div class="cell"><div class="lbl">시가</div><div class="val">${fmt(d.open)}</div></div>
           <div class="cell"><div class="lbl">고가</div><div class="val">${fmt(d.dayHigh)}</div></div>
           <div class="cell"><div class="lbl">저가</div><div class="val">${fmt(d.dayLow)}</div></div>
-        </div>`;
+        </div>
+        ${recent ? `<div class="recent"><div class="rlbl">최근 4일 종가</div><div class="rgrid">${recent}</div></div>` : ""}`;
+      rebind(el);
     } catch (e) {
-      card.innerHTML = `<div class="msg err">네트워크 오류: ${e}</div>`;
+      el.innerHTML = `<div class="msg err">${sym}: 네트워크 오류</div>
+        <button class="remove" data-sym="${sym}">✕</button>`;
+      rebind(el);
     }
   }
 
-  function start() {
-    const sym = $("symbol").value.trim().toUpperCase();
-    if (!sym) return;
-    current = sym;
-    if (timer) clearInterval(timer);
-    load(current);
-    timer = setInterval(() => load(current), REFRESH_MS);
+  function rebind(el) {
+    const b = el.querySelector(".remove");
+    if (b) b.addEventListener("click", () => removeSymbol(b.dataset.sym));
   }
 
-  $("go").addEventListener("click", start);
-  $("symbol").addEventListener("keydown", (e) => { if (e.key === "Enter") start(); });
+  function addSymbol() {
+    const sym = $("symbol").value.trim().toUpperCase();
+    if (!sym || symbols.includes(sym)) { $("symbol").value = ""; return; }
+    symbols.push(sym);
+    $("symbol").value = "";
+    render();
+  }
+
+  $("go").addEventListener("click", addSymbol);
+  $("symbol").addEventListener("keydown", (e) => { if (e.key === "Enter") addSymbol(); });
+
+  render();
+  setInterval(() => symbols.forEach(load), REFRESH_MS);
 </script>
 </body>
 </html>

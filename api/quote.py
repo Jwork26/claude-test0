@@ -22,8 +22,22 @@ def pick_price(info):
     return info.get("regularMarketPrice"), "장마감(종가)"
 
 
+def recent_closes(ticker, n=4):
+    """최근 n 거래일의 종가 [{date, close}]."""
+    out = []
+    try:
+        hist = ticker.history(period="10d", interval="1d")
+        closes = hist["Close"].dropna()
+        for dt, c in list(closes.items())[-n:]:
+            out.append({"date": dt.strftime("%m/%d"), "close": round(float(c), 2)})
+    except Exception:
+        pass
+    return out
+
+
 def build_payload(symbol):
-    info = yf.Ticker(symbol).info
+    ticker = yf.Ticker(symbol)
+    info = ticker.info
     if not info or info.get("regularMarketPrice") is None:
         return None
     price, label = pick_price(info)
@@ -45,6 +59,7 @@ def build_payload(symbol):
         "currency": info.get("currency", "USD"),
         "change": change,
         "changePct": change_pct,
+        "recentCloses": recent_closes(ticker),
         "fetchedKST": now.astimezone(KST).strftime("%Y-%m-%d %H:%M:%S"),
         "fetchedET": now.astimezone(ET).strftime("%Y-%m-%d %H:%M:%S %Z"),
     }

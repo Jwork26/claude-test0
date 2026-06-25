@@ -37,13 +37,23 @@ def quote():
         return jsonify({"error": "종목명을 입력하세요."}), 400
 
     try:
-        info = yf.Ticker(symbol).info
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
     except Exception as e:
         return jsonify({"error": f"조회 실패: {e}"}), 502
 
     # 유효성: 가격 정보가 전혀 없으면 잘못된 종목
     if not info or info.get("regularMarketPrice") is None:
         return jsonify({"error": f"'{symbol}' 종목을 찾을 수 없습니다."}), 404
+
+    # 최근 4 거래일 종가
+    recent = []
+    try:
+        closes = ticker.history(period="10d", interval="1d")["Close"].dropna()
+        for dt, c in list(closes.items())[-4:]:
+            recent.append({"date": dt.strftime("%m/%d"), "close": round(float(c), 2)})
+    except Exception:
+        pass
 
     price, label, _ = pick_price(info)
     prev_close = info.get("regularMarketPreviousClose") or info.get("previousClose")
@@ -67,6 +77,7 @@ def quote():
         "currency": info.get("currency", "USD"),
         "change": change,
         "changePct": change_pct,
+        "recentCloses": recent,
         "fetchedKST": now.astimezone(KST).strftime("%Y-%m-%d %H:%M:%S"),
         "fetchedET": now.astimezone(ET).strftime("%Y-%m-%d %H:%M:%S %Z"),
     })
