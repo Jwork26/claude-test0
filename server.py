@@ -1,11 +1,8 @@
-"""상시 실행 서버 (Render/Railway 등).
+"""상시 실행 서버 (Render 용).
 
-백그라운드 웹소켓(yfinance)이 Yahoo 실시간 스트림에 연결해 최신 체결가를
-캐시한다. 이 스트림은 오버나이트(Blue Ocean ATS, 8PM~4AM ET) 세션 가격까지
-포함하므로 Yahoo Finance 웹페이지와 동일한 값을 표시할 수 있다.
-
-OHLC/전일종가/최근 종가는 REST(yf.Ticker)로 가져오고 30초 캐시한다.
-'현재가'는 웹소켓 실시간가가 있으면 그것을, 없으면 REST 값을 쓴다.
+백그라운드에서 yflive 웹소켓이 Yahoo Finance 실시간 스트림에 연결해
+오버나이트(Blue Ocean ATS 포함) 체결가를 캐시한다.
+OHLC/전일종가/최근종가는 REST(yfinance) 30초 캐시.
 """
 import os
 import threading
@@ -18,65 +15,82 @@ from flask import Flask, jsonify, request, send_from_directory
 
 app = Flask(__name__)
 KST = ZoneInfo("Asia/Seoul")
-ET = ZoneInfo("America/New_York")
+ET  = ZoneInfo("America/New_York")
 
 DEFAULT_SYMBOLS = ["SNDK", "MU"]
 
-# 웹소켓 실시간 캐시
-_live = {}                     # symbol -> {"price":.., "marketHours":.., "time":..}
+# 실시간 캐시: symbol -> {"price": float, "label": str, "ts": float}
+_live: dict = {}
 _live_lock = threading.Lock()
-_subscribed = set(DEFAULT_SYMBOLS)
+
+# 구독 중인 심볼
+_subscribed: set = set(DEFAULT_SYMBOLS)
 _sub_lock = threading.Lock()
-_ws = None
 
-# REST 캐시 (info/recent) — symbol -> (timestamp, payload)
-_rest_cache = {}
+# REST 30초 캐시: symbol -> (timestamp, data_dict)
+_rest_cache: dict = {}
 _rest_lock = threading.Lock()
-REST_TTL = 30  # 초
+REST_TTL = 30
 
-# Yahoo protobuf marketHours enum -> 라벨
-_MH_LABEL = {0: "프리마켓", 1: "장중", 2: "애프터마켓", 3: "애프터마켓(오버나이트)"}
+# Yahoo marketHours enum → 라벨
+_MH = {0: "프리마켓", 1: "장중", 2: "애프터마켓", 3: "오버나이트"}
 
 
-def _on_message(msg):
-    sym = msg.get("id")
-    if not sym:
-        return
-    with _live_lock:
-        _live[sym] = msg
+# ── 웹소켓 스트리밍 ──────────────────────────────────────────────────────────
+
+def _make_streamer():
+    """yflive QuoteStreamer 생성. 설치 안 됐으면 None."""
+    try:
+        from yflive import QuoteStreamer
+        qs = QuoteStreamer()
+        return qs
+    except ImportError:
+        return None
+
+
+def _on_quote(qs, quote):
+    """yflive 콜백: quote 객체 → _live 캐시 업데이트."""
+    sym = getattr(quote, "id", None)
+    price = getattr(quote, "price", None)
+    mh = getattr(quote, "marketHours", None)
+    if sym and price is not None:
+        label = _MH.get(mh, "")
+        with _live_lock:
+            _live[sym] = {"price": round(float(price), 2),
+                          "label": label,
+                          "ts": time.time()}
 
 
 def _run_ws():
-    """웹소켓 연결 유지 (끊기면 재연결). listen()은 블로킹이라 별도 스레드에서 돈다."""
-    global _ws
+    """웹소켓 연결 유지 스레드. 끊기면 재연결."""
     while True:
+        qs = _make_streamer()
+        if qs is None:
+            # yflive 없음 → REST 전용으로 동작
+            time.sleep(3600)
+            continue
         try:
-            _ws = yf.WebSocket()
             with _sub_lock:
                 syms = list(_subscribed)
-            if syms:
-                _ws.subscribe(syms)
-            _ws.listen(_on_message)  # blocking
+            qs.subscribe(syms)
+            qs.on_quote = _on_quote
+            qs.start(should_thread=False)   # blocking
         except Exception:
-            _ws = None
-            time.sleep(3)            # 재연결 대기
+            pass
+        time.sleep(3)   # 재연결 대기
 
 
 def ensure_subscribed(symbol):
-    """요청된 종목을 아직 구독 안 했으면 추가 구독."""
     with _sub_lock:
         if symbol in _subscribed:
             return
         _subscribed.add(symbol)
-    if _ws is not None:
-        try:
-            _ws.subscribe([symbol])
-        except Exception:
-            pass
+    # 실행 중인 QuoteStreamer가 없으므로 재시작 시 반영됨
 
 
-def rest_data(symbol):
-    """OHLC/전일종가/최근4일종가 (30초 캐시)."""
+# ── REST 데이터 ───────────────────────────────────────────────────────────────
+
+def rest_data(symbol: str):
     now = time.time()
     with _rest_lock:
         hit = _rest_cache.get(symbol)
@@ -114,37 +128,22 @@ def rest_data(symbol):
     return data
 
 
-def rest_price_label(d):
-    """웹소켓 값이 없을 때 쓸 REST 기준 현재가/라벨."""
+def rest_fallback_price(d: dict):
     st = d["marketState"]
-    if st in ("PRE", "PREPRE") and d.get("preMarketPrice") is not None:
+    if st in ("PRE", "PREPRE") and d.get("preMarketPrice"):
         return d["preMarketPrice"], "프리마켓"
-    if st in ("POST", "POSTPOST") and d.get("postMarketPrice") is not None:
+    if st in ("POST", "POSTPOST") and d.get("postMarketPrice"):
         return d["postMarketPrice"], "애프터마켓"
     if st == "REGULAR":
         return d["regularMarketPrice"], "장중"
     return d["regularMarketPrice"], "장마감(종가)"
 
 
+# ── Flask 라우트 ──────────────────────────────────────────────────────────────
+
 @app.route("/")
 def index():
     return send_from_directory(".", "index.html")
-
-
-@app.route("/api/ws-status")
-def ws_status():
-    """웹소켓 연결 및 캐시 상태 진단용."""
-    with _live_lock:
-        live_snapshot = {k: {"price": v.get("price"), "marketHours": v.get("marketHours"),
-                             "time": v.get("time")} for k, v in _live.items()}
-    with _sub_lock:
-        subs = list(_subscribed)
-    return jsonify({
-        "ws_connected": _ws is not None,
-        "subscribed": subs,
-        "live_cache": live_snapshot,
-        "cache_count": len(live_snapshot),
-    })
 
 
 @app.route("/api/quote")
@@ -161,44 +160,57 @@ def quote():
     if d is None:
         return jsonify({"error": f"'{symbol}' 종목을 찾을 수 없습니다."}), 404
 
-    # 기본은 REST, 웹소켓 실시간가가 있으면 그걸로 덮어씀(웹페이지와 동일)
-    price, label = rest_price_label(d)
-    source = "REST"
+    # 실시간 캐시 우선, 60초 이상 지난 캐시는 버림
+    price, label, source = None, None, "REST"
     with _live_lock:
-        msg = _live.get(symbol)
-    if msg and msg.get("price") is not None:
-        price = round(float(msg["price"]), 2)
+        live = _live.get(symbol)
+    if live and (time.time() - live["ts"]) < 60:
+        price  = live["price"]
+        label  = live["label"] or rest_fallback_price(d)[1]
         source = "LIVE"
-        mh = msg.get("marketHours")
-        label = _MH_LABEL.get(mh, label)
+    else:
+        price, label = rest_fallback_price(d)
 
-    prev_close = d["previousClose"]
-    change = change_pct = None
-    if price is not None and prev_close:
-        change = round(price - prev_close, 4)
-        change_pct = round(change / prev_close * 100, 4)
+    prev = d["previousClose"]
+    change = round(price - prev, 4) if price and prev else None
+    change_pct = round(change / prev * 100, 4) if change and prev else None
 
     now = datetime.now(tz=KST)
     return jsonify({
-        "symbol": symbol,
-        "name": d["name"],
-        "marketLabel": label,
-        "source": source,
-        "price": price,
-        "previousClose": prev_close,
-        "open": d["open"],
-        "dayHigh": d["dayHigh"],
-        "dayLow": d["dayLow"],
-        "currency": d["currency"],
-        "change": change,
-        "changePct": change_pct,
+        "symbol":       symbol,
+        "name":         d["name"],
+        "marketLabel":  label,
+        "source":       source,
+        "price":        price,
+        "previousClose":prev,
+        "open":         d["open"],
+        "dayHigh":      d["dayHigh"],
+        "dayLow":       d["dayLow"],
+        "currency":     d["currency"],
+        "change":       change,
+        "changePct":    change_pct,
         "recentCloses": d["recentCloses"],
-        "fetchedKST": now.astimezone(KST).strftime("%Y-%m-%d %H:%M:%S"),
-        "fetchedET": now.astimezone(ET).strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "fetchedKST":   now.astimezone(KST).strftime("%Y-%m-%d %H:%M:%S"),
+        "fetchedET":    now.astimezone(ET).strftime("%Y-%m-%d %H:%M:%S %Z"),
     })
 
 
-# 웹소켓 백그라운드 스레드 시작 (gunicorn import 시에도 동작)
+@app.route("/api/ws-status")
+def ws_status():
+    with _live_lock:
+        snap = {k: {"price": v["price"], "label": v["label"],
+                    "age_sec": round(time.time() - v["ts"])}
+                for k, v in _live.items()}
+    with _sub_lock:
+        subs = list(_subscribed)
+    return jsonify({
+        "subscribed":  subs,
+        "live_cache":  snap,
+        "cache_count": len(snap),
+    })
+
+
+# 웹소켓 스레드 시작
 threading.Thread(target=_run_ws, daemon=True).start()
 
 if __name__ == "__main__":
