@@ -34,9 +34,9 @@ REST_TTL = 30
 
 _MH = {0: "프리마켓", 1: "장중", 2: "애프터마켓", 3: "오버나이트"}
 
-WS_URL = "wss://streamer.finance.yahoo.com"
+WS_URL = "wss://streamer.finance.yahoo.com/?version=2"
 
-VERSION = "fb57108-app"
+VERSION = "8dcf487-fix"
 
 
 # ── protobuf-lite 파서 ────────────────────────────────────────────────────────
