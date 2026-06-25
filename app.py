@@ -36,7 +36,7 @@ _MH = {0: "프리마켓", 1: "장중", 2: "애프터마켓", 3: "오버나이트
 
 WS_URL = "wss://streamer.finance.yahoo.com/?version=2"
 
-VERSION = "yahoo-layout"
+VERSION = "ws-prefix-fix"
 
 
 # ── protobuf-lite 파서 ────────────────────────────────────────────────────────
@@ -106,10 +106,29 @@ def _run_ws():
 
     def on_message(ws, message):
         try:
-            # Yahoo는 패딩 없는 base64 전송 → 4의 배수로 패딩 맞춤
+            if isinstance(message, bytes):
+                message = message.decode("utf-8", errors="ignore")
             msg_str = message.strip()
-            msg_str += "=" * (-len(msg_str) % 4)
-            raw = base64.b64decode(msg_str)
+
+            # Yahoo는 메시지 앞에 타입 prefix 문자(예: "0", "4")를 붙이는 경우가 있음
+            # 유효 base64 문자가 아니면 앞에서 제거
+            B64_CHARS = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=-_")
+            while msg_str and msg_str[0] not in B64_CHARS:
+                msg_str = msg_str[1:]
+
+            # 패딩 맞춤 후 urlsafe / 표준 base64 둘 다 시도
+            padded = msg_str + "=" * (-len(msg_str) % 4)
+            raw = None
+            last_err = None
+            for decode_fn in (base64.b64decode, base64.urlsafe_b64decode):
+                try:
+                    raw = decode_fn(padded)
+                    break
+                except Exception as e:
+                    last_err = e
+            if raw is None:
+                raise last_err
+
             msg = _parse_pricing(raw)
             sym   = msg.get("id")
             price = msg.get("price")
@@ -121,12 +140,18 @@ def _run_ws():
                         "label": _MH.get(mh, ""),
                         "ts":    time.time(),
                     }
-            # 메시지는 받았지만 유효 데이터 없음 (연결 확인용)
             with _live_lock:
-                _live["__last_msg__"] = {"raw_len": len(raw), "parsed": str(msg)[:100], "ts": time.time()}
+                _live["__last_msg__"] = {
+                    "raw_len": len(raw), "parsed": str(msg)[:120],
+                    "raw_prefix": message[:4], "ts": time.time(),
+                }
         except Exception as e:
             with _live_lock:
-                _live["__msg_error__"] = {"err": str(e)[:200], "ts": time.time()}
+                _live["__msg_error__"] = {
+                    "err": str(e)[:200],
+                    "raw_prefix": (message[:8] if isinstance(message, str) else repr(message[:8])),
+                    "ts": time.time(),
+                }
 
     def on_error(ws, err):
         with _live_lock:
