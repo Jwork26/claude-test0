@@ -36,7 +36,7 @@ _MH = {0: "프리마켓", 1: "장중", 2: "애프터마켓", 3: "오버나이트
 
 WS_URL = "wss://streamer.finance.yahoo.com/?version=2"
 
-VERSION = "rest-overnight-fix"
+VERSION = "yahoo-layout"
 
 
 # ── protobuf-lite 파서 ────────────────────────────────────────────────────────
@@ -183,6 +183,7 @@ def rest_data(symbol: str):
 
     data = {
         "name":         info.get("longName") or info.get("shortName") or symbol,
+        "exchange":     info.get("fullExchangeName") or info.get("exchange") or "",
         "marketState":  info.get("marketState", ""),
         "regularMarketPrice": info.get("regularMarketPrice"),
         "preMarketPrice":     info.get("preMarketPrice"),
@@ -281,10 +282,12 @@ def quote():
     reg_change     = round(reg_price - prev, 4) if reg_price and prev else None
     reg_change_pct = round(reg_change / prev * 100, 4) if reg_change and prev else None
 
-    now = datetime.now(tz=KST)
+    now = datetime.now(tz=ET)
+    now_kst = now.astimezone(KST)
     return jsonify({
         "symbol":        symbol,
         "name":          d["name"],
+        "exchange":      d.get("exchange", ""),
         "marketLabel":   label,
         "marketState":   st,
         "isPostMarket":  is_postmarket,
@@ -301,8 +304,8 @@ def quote():
         "change":        change,
         "changePct":     change_pct,
         "recentCloses":  d["recentCloses"],
-        "fetchedKST":    now.astimezone(KST).strftime("%Y-%m-%d %H:%M:%S"),
-        "fetchedET":     now.astimezone(ET).strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "fetchedKST":    now_kst.strftime("%Y-%m-%d %H:%M:%S"),
+        "fetchedET":     now.strftime("%I:%M:%S %p %Z"),
     })
 
 
