@@ -53,6 +53,11 @@ def _decode_varint(data: bytes, pos: int):
 
 
 def _parse_pricing(data: bytes) -> dict:
+    """PricingData protobuf 파서.
+    field 1 = id (string, wire 2)
+    field 2 = price (float, wire 5)
+    field 7 = marketHours (int32, wire 0)
+    """
     out = {}
     pos = 0
     while pos < len(data):
@@ -63,29 +68,21 @@ def _parse_pricing(data: bytes) -> dict:
         field = tag_byte >> 3
         wire  = tag_byte & 0x7
         try:
-            if wire == 0:
+            if wire == 0:          # varint
                 val, pos = _decode_varint(data, pos)
-                if field == 3:
+                if field == 7:
                     out["marketHours"] = val
-            elif wire == 1:
-                val = struct.unpack_from("<d", data, pos)[0]; pos += 8
-                if field == 1:
-                    out["price"] = val
-            elif wire == 2:
+            elif wire == 1:        # 64-bit
+                pos += 8
+            elif wire == 2:        # length-delimited
                 length, pos = _decode_varint(data, pos)
                 chunk = data[pos:pos+length]; pos += length
-                if field == 4:
+                if field == 1:     # id = ticker symbol
                     try: out["id"] = chunk.decode("utf-8")
                     except Exception: pass
-                elif field == 1 and "id" not in out:
-                    try:
-                        s = chunk.decode("utf-8")
-                        if s.isascii() and len(s) <= 10:
-                            out["id"] = s
-                    except Exception: pass
-            elif wire == 5:
+            elif wire == 5:        # 32-bit float
                 val = struct.unpack_from("<f", data, pos)[0]; pos += 4
-                if field == 1 and "price" not in out:
+                if field == 2:     # price
                     out["price"] = val
             else:
                 break
