@@ -131,6 +131,22 @@ def index():
     return send_from_directory(".", "index.html")
 
 
+@app.route("/api/ws-status")
+def ws_status():
+    """웹소켓 연결 및 캐시 상태 진단용."""
+    with _live_lock:
+        live_snapshot = {k: {"price": v.get("price"), "marketHours": v.get("marketHours"),
+                             "time": v.get("time")} for k, v in _live.items()}
+    with _sub_lock:
+        subs = list(_subscribed)
+    return jsonify({
+        "ws_connected": _ws is not None,
+        "subscribed": subs,
+        "live_cache": live_snapshot,
+        "cache_count": len(live_snapshot),
+    })
+
+
 @app.route("/api/quote")
 def quote():
     symbol = (request.args.get("symbol") or "").strip().upper()
