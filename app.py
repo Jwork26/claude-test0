@@ -36,7 +36,7 @@ _MH = {0: "프리마켓", 1: "장중", 2: "애프터마켓", 3: "오버나이트
 
 WS_URL = "wss://streamer.finance.yahoo.com/?version=2"
 
-VERSION = "8dcf487-fix"
+VERSION = "15e1090-diag"
 
 
 # ── protobuf-lite 파서 ────────────────────────────────────────────────────────
@@ -216,7 +216,12 @@ def index():
 
 @app.route("/api/version")
 def version():
-    return jsonify({"version": VERSION, "ws_backend": "websocket-client"})
+    try:
+        import websocket
+        ws_ver = getattr(websocket, "version", "unknown")
+    except ImportError as e:
+        ws_ver = f"IMPORT ERROR: {e}"
+    return jsonify({"version": VERSION, "ws_backend": "websocket-client", "ws_lib": ws_ver})
 
 
 @app.route("/api/ws-status")
