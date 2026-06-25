@@ -125,6 +125,14 @@ def _run_ws():
             with _live_lock:
                 _live["__error__"] = {"err": str(e), "ts": time.time()}
 
+    def on_error(ws, err):
+        with _live_lock:
+            _live["__error__"] = {"err": str(err)[:300], "ts": time.time()}
+
+    def on_close(ws, code, msg):
+        with _live_lock:
+            _live["__close__"] = {"code": code, "ts": time.time()}
+
     while True:
         try:
             ws = websocket.WebSocketApp(
@@ -132,12 +140,13 @@ def _run_ws():
                 header={"User-Agent": "Mozilla/5.0"},
                 on_open=on_open,
                 on_message=on_message,
-                on_error=lambda ws, e: None,
-                on_close=lambda ws, *a: None,
+                on_error=on_error,
+                on_close=on_close,
             )
             ws.run_forever(ping_interval=20, ping_timeout=10)
-        except Exception:
-            pass
+        except Exception as e:
+            with _live_lock:
+                _live["__exception__"] = {"err": str(e)[:300], "ts": time.time()}
         time.sleep(5)
 
 
