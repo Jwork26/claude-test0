@@ -36,7 +36,7 @@ _MH = {0: "프리마켓", 1: "장중", 2: "애프터마켓", 3: "오버나이트
 
 WS_URL = "wss://streamer.finance.yahoo.com/?version=2"
 
-VERSION = "5fc5d3c-b64fix"
+VERSION = "9199411-prepre"
 
 
 # ── protobuf-lite 파서 ────────────────────────────────────────────────────────
@@ -106,7 +106,10 @@ def _run_ws():
 
     def on_message(ws, message):
         try:
-            raw = base64.b64decode(message + "==")  # Yahoo는 패딩 없는 base64 사용
+            # Yahoo는 패딩 없는 base64 전송 → 4의 배수로 패딩 맞춤
+            msg_str = message.strip()
+            msg_str += "=" * (-len(msg_str) % 4)
+            raw = base64.b64decode(msg_str)
             msg = _parse_pricing(raw)
             sym   = msg.get("id")
             price = msg.get("price")
@@ -269,9 +272,10 @@ def quote():
     change     = round(price - prev, 4) if price and prev else None
     change_pct = round(change / prev * 100, 4) if change and prev else None
 
-    # 장외(POST/POSTPOST) 상태일 때 종가 대비 오버나이트 등락도 제공
+    # 장외 상태일 때 종가 대비 오버나이트 등락도 제공
+    # PREPRE = 오버나이트(자정~오전4시), POST/POSTPOST = 애프터마켓(4PM~8PM)
     st = d["marketState"]
-    is_postmarket = st in ("POST", "POSTPOST")
+    is_postmarket = st in ("POST", "POSTPOST", "PREPRE")
     reg_change     = round(reg_price - prev, 4) if reg_price and prev else None
     reg_change_pct = round(reg_change / prev * 100, 4) if reg_change and prev else None
 

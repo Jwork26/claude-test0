@@ -155,7 +155,7 @@
             </div>
             <div class="price-divider"></div>
             <div class="price-block">
-              <div class="plbl">${d.marketLabel} ${d.source === "LIVE" ? "🟢" : ""}</div>
+              <div class="plbl">${d.marketState === "PREPRE" ? "오버나이트" : d.marketLabel} ${d.source === "LIVE" ? "🟢" : ""}</div>
               <div class="price ${cls}">$${fmt(d.price)}</div>
               <div class="change-line">${chg}</div>
             </div>
