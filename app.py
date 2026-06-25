@@ -36,7 +36,7 @@ _MH = {0: "프리마켓", 1: "장중", 2: "애프터마켓", 3: "오버나이트
 
 WS_URL = "wss://streamer.finance.yahoo.com/?version=2"
 
-VERSION = "9199411-prepre"
+VERSION = "rest-overnight-fix"
 
 
 # ── protobuf-lite 파서 ────────────────────────────────────────────────────────
@@ -201,10 +201,12 @@ def rest_data(symbol: str):
 
 def rest_fallback(d: dict):
     st = d["marketState"]
-    if st in ("PRE", "PREPRE") and d.get("preMarketPrice"):
+    if st == "PRE" and d.get("preMarketPrice"):
         return d["preMarketPrice"], "프리마켓"
-    if st in ("POST", "POSTPOST") and d.get("postMarketPrice"):
-        return d["postMarketPrice"], "애프터마켓"
+    # PREPRE = 오버나이트(8PM-4AM ET): Yahoo가 postMarketPrice에 Blue Ocean 가격 저장
+    if st in ("POST", "POSTPOST", "PREPRE") and d.get("postMarketPrice"):
+        label = "오버나이트" if st == "PREPRE" else "애프터마켓"
+        return d["postMarketPrice"], label
     if st == "REGULAR":
         return d["regularMarketPrice"], "장중"
     return d["regularMarketPrice"], "장마감(종가)"
