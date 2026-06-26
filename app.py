@@ -37,7 +37,7 @@ REST_TTL = 20   # 20초 캐시 (더 자주 갱신)
 _MH = {0: "프리마켓", 1: "장중", 2: "애프터마켓", 3: "오버나이트"}
 
 WS_URL = "wss://streamer.finance.yahoo.com/?version=2"
-VERSION = "direct-api-v2"
+VERSION = "direct-api-v3"
 
 # ── Yahoo Finance v7 직접 호출 ────────────────────────────────────────────────
 
@@ -61,20 +61,26 @@ def _get_crumb() -> str:
     with _crumb_lock:
         if _crumb and time.time() - _crumb_ts < CRUMB_TTL:
             return _crumb
-        try:
-            req = urllib.request.Request("https://fc.yahoo.com", headers=_HEADERS)
-            _opener.open(req, timeout=8)
-            req = urllib.request.Request(
-                "https://query1.finance.yahoo.com/v1/test/getcrumb",
-                headers=_HEADERS,
-            )
-            crumb = _opener.open(req, timeout=8).read().decode().strip()
-            if crumb and "Unauthorized" not in crumb:
-                _crumb = crumb
-                _crumb_ts = time.time()
-                return _crumb
-        except Exception:
-            pass
+        # fc.yahoo.com 대신 finance.yahoo.com 메인 페이지로 쿠키 설정
+        # (Render 환경에서 fc.yahoo.com이 봇 탐지로 차단되는 문제 우회)
+        for seed_url in (
+            "https://finance.yahoo.com/",
+            "https://fc.yahoo.com",
+        ):
+            try:
+                req = urllib.request.Request(seed_url, headers=_HEADERS)
+                _opener.open(req, timeout=8)
+                req = urllib.request.Request(
+                    "https://query1.finance.yahoo.com/v1/test/getcrumb",
+                    headers=_HEADERS,
+                )
+                crumb = _opener.open(req, timeout=8).read().decode().strip()
+                if crumb and "Unauthorized" not in crumb and len(crumb) > 3:
+                    _crumb = crumb
+                    _crumb_ts = time.time()
+                    return _crumb
+            except Exception:
+                pass
         return _crumb  # 실패 시 이전 crumb 재사용
 
 
@@ -268,13 +274,30 @@ def rest_data(symbol: str) -> dict | None:
     # 1차: Yahoo v7 직접 호출
     q = _fetch_v7(symbol)
 
-    # 2차 fallback: yfinance
+    # 2차 fallback: yfinance (fast_info 먼저, info는 무거움)
     if q is None:
         try:
-            info = yf.Ticker(symbol).info
-            if not info or info.get("regularMarketPrice") is None:
+            t = yf.Ticker(symbol)
+            # fast_info는 캐시 없이 최신 값 반환
+            fi = t.fast_info
+            info = t.info or {}
+            # fast_info에서 핵심 필드 우선 사용
+            q = {
+                "longName":                info.get("longName") or info.get("shortName") or symbol,
+                "fullExchangeName":        info.get("fullExchangeName") or "",
+                "marketState":             info.get("marketState") or fi.get("marketState") or "",
+                "regularMarketPrice":      fi.last_price if hasattr(fi, "last_price") else info.get("regularMarketPrice"),
+                "regularMarketPreviousClose": fi.previous_close if hasattr(fi, "previous_close") else info.get("regularMarketPreviousClose"),
+                "regularMarketOpen":       fi.open if hasattr(fi, "open") else info.get("regularMarketOpen"),
+                "regularMarketDayHigh":    fi.day_high if hasattr(fi, "day_high") else info.get("regularMarketDayHigh"),
+                "regularMarketDayLow":     fi.day_low if hasattr(fi, "day_low") else info.get("regularMarketDayLow"),
+                "currency":                fi.currency if hasattr(fi, "currency") else info.get("currency", "USD"),
+                # 장외 가격은 info에서만 제공
+                "preMarketPrice":          info.get("preMarketPrice"),
+                "postMarketPrice":         info.get("postMarketPrice"),
+            }
+            if not q.get("regularMarketPrice"):
                 return None
-            q = info
         except Exception:
             return None
 
@@ -380,7 +403,8 @@ def quote():
     change_pct = round(change / prev * 100, 4) if change and prev else None
 
     st = d["marketState"]
-    is_postmarket  = st in ("POST", "POSTPOST", "PREPRE")
+    # price != reg_price 일 때만 이중 표시 (postMarketPrice 누락 시 단일 표시)
+    is_postmarket  = st in ("POST", "POSTPOST", "PREPRE") and (price != reg_price)
     reg_change     = round(reg_price - prev, 4) if reg_price and prev else None
     reg_change_pct = round(reg_change / prev * 100, 4) if reg_change and prev else None
 
